@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>勇者森林：真·動作射擊數學大冒險</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'PingFang TC', 'Microsoft JhengHei', sans-serif; user-select: none; }
+        body { background: #0f2010; color: #fff; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 10px; overflow: hidden; }
+        
+        #game-container { width: 800px; height: 600px; background: #1b331c; border: 4px solid #4a7c43; border-radius: 16px; position: relative; box-shadow: 0 10px 30px rgba(0,0,0,0.8); overflow: hidden; }
+        
+        .screen { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: flex-start; position: absolute; top: 0; left: 0; z-index: 10; background: rgba(15, 32, 16, 0.95); padding: 20px; text-align: center; overflow-y: auto; }
+        .active { display: flex; }
+
+        h1 { color: #ffd700; text-shadow: 2px 2px 6px #000; font-size: 2rem; margin-bottom: 6px; }
+        p { color: #a8e6cf; font-size: 1rem; margin-bottom: 10px; }
+
+        input[type="text"] { font-size: 1.1rem; padding: 8px 14px; border-radius: 8px; border: 2px solid #5c8a4d; margin: 8px 0; width: 280px; text-align: center; outline: none; }
+        
+        .btn { background: #e67e22; color: #fff; font-size: 1.1rem; font-weight: bold; padding: 10px 26px; border: none; border-radius: 30px; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 0 #d35400; margin-top: 6px; }
+        .btn:hover { background: #f39c12; transform: translateY(-2px); }
+        .btn:active { transform: translateY(2px); box-shadow: none; }
+
+        /* 遊戲抬頭顯示器 (HUD) */
+        #hud { position: absolute; top: 0; left: 0; width: 100%; padding: 12px 20px; background: rgba(0,0,0,0.6); display: flex; justify-content: space-between; align-items: center; z-index: 5; font-size: 1.1rem; border-bottom: 2px solid #4a7c43; }
+        #question-banner { position: absolute; top: 55px; left: 50%; transform: translateX(-50%); background: rgba(20, 50, 20, 0.9); border: 2px solid #ffd700; border-radius: 20px; padding: 8px 24px; font-size: 1.3rem; font-weight: bold; color: #fff; z-index: 5; text-shadow: 1px 1px 3px #000; box-shadow: 0 4px 10px rgba(0,0,0,0.5); }
+
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair; touch-action: none; }
+
+        .result-box { background: rgba(0,0,0,0.4); border: 2px solid #4a7c43; border-radius: 12px; padding: 12px 20px; width: 85%; margin: 10px 0; }
+
+        /* 🏆 排行榜樣式 */
+        .leaderboard-box { background: rgba(0, 0, 0, 0.5); border: 2px solid #ffd700; border-radius: 12px; width: 85%; max-width: 550px; padding: 10px 15px; margin: 10px 0; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .leaderboard-title { font-size: 1.1rem; font-weight: bold; color: #ffd700; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        .leaderboard-table { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+        .leaderboard-table th { color: #a8e6cf; border-bottom: 1px solid #4a7c43; padding: 6px; text-align: center; }
+        .leaderboard-table td { padding: 6px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.05); }
+        .rank-1 { color: #ffd700; font-weight: bold; }
+        .rank-2 { color: #e0e0e0; font-weight: bold; }
+        .rank-3 { color: #cd7f32; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+
+    <!-- 1. 開始畫面 -->
+    <div id="start-screen" class="screen active">
+        <h1>🏹 勇者森林：數學射擊大冒險</h1>
+        <p>🎯 移動滑鼠或觸控瞄準，點擊左鍵發射魔法箭擊碎正確答案！</p>
+        
+        <div>
+            <input type="text" id="player-name" placeholder="輸入姓名或座號 (例: 40101張小明)">
+        </div>
+        <button class="btn" onclick="startGame()">裝填弩砲，出征！</button>
+
+        <!-- 即時排行榜區塊 -->
+        <div class="leaderboard-box">
+            <div class="leaderboard-title">🏆 森林英雄榜 (Top 5)</div>
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>名次</th>
+                        <th>勇者</th>
+                        <th>得分</th>
+                        <th>剩餘 HP</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboard-body-start">
+                    <tr><td colspan="4" style="color: #aaa;">⏳ 正在連線讀取排行榜...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 2. 遊戲主畫面 (Canvas + HUD) -->
+    <div id="hud" style="display:none;">
+        <div>勇者: <span id="display-name" style="color:#ffd700;"></span></div>
+        <div style="color:#ff4757; font-weight:bold;">❤️ HP: <span id="hp-val">100</span></div>
+        <div style="color:#1e90ff; font-weight:bold;">🎯 得分: <span id="score-val">0</span></div>
+    </div>
+    <div id="question-banner" style="display:none;">任務載入中...</div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <!-- 3. 結算畫面 -->
+    <div id="result-screen" class="screen">
+        <h1>🏆 冒險結束戰報</h1>
+        <div class="result-box">
+            <p style="font-size: 1.1rem;">勇者：<span id="res-name"></span></p>
+            <p style="font-size: 1.3rem; margin: 6px 0; color: #ffd700;">總命中得分：<span id="res-score"></span> 分</p>
+            <p>剩餘血量：<span id="res-hp" style="color:#ff4757; font-weight:bold;"></span> HP</p>
+            <h3 id="res-title" style="margin-top: 8px; color: #2ed573;"></h3>
+        </div>
+
+        <p id="upload-status" style="font-size: 0.85rem; color: #a8e6cf; margin-bottom: 5px;">數據同步中...</p>
+
+        <!-- 結算畫面排行榜區塊 -->
+        <div class="leaderboard-box">
+            <div class="leaderboard-title">👑 最新森林殿堂 (Top 5)</div>
+            <table class="leaderboard-table">
+                <thead>
+                    <tr>
+                        <th>名次</th>
+                        <th>勇者</th>
+                        <th>得分</th>
+                        <th>剩餘 HP</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboard-body-end">
+                    <tr><td colspan="4" style="color: #aaa;">⏳ 更新最新排名中...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <button class="btn" onclick="location.reload()">🔄 再次挑戰</button>
+    </div>
+
+</div>
+
+<script>
+    // ----------------------------------------------------
+    // ⚙️ 教師配置區：已帶入您的 Apps Script 部署網址
+    // ----------------------------------------------------
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwK5Ord3hXd4MQLmFYexUnyfMCvJyZSlIrGAwHUoN2NEO2HPruMA5-1r90uJjIq8ggf/exec";
+
+    // 題庫 (小學四年級 乘除法)
+    const questions = [
+        { q: "任務 1: 48 × 7 = ?", options: ["286", "336", "356", "316"], ans: "336" },
+        { q: "任務 2: 83 × 5 = ?", options: ["415", "405", "425", "435"], ans: "415" },
+        { q: "任務 3: 64 × 8 = ?", options: ["482", "492", "512", "522"], ans: "512" },
+        { q: "任務 4: 546 ÷ 13 = ?", options: ["38", "42", "46", "52"], ans: "42" },
+        { q: "任務 5: 812 ÷ 28 = ?", options: ["27", "28", "29", "31"], ans: "29" },
+        { q: "任務 6: 475 ÷ 15 = ?", options: ["31...10", "30...25", "31...5", "32...10"], ans: "31...10" },
+        { q: "任務 7: (36 × 12) ÷ 16 = ?", options: ["24", "27", "32", "36"], ans: "27" },
+        { q: "任務 8: (52 × 9) ÷ 18 = ?", options: ["24", "26", "28", "30"], ans: "26" }
+    ];
+
+    // 音效合成 (Web Audio API)
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(type) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+
+        if (type === 'shoot') {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        } else if (type === 'correct') {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(523.25, audioCtx.currentTime);
+            osc.frequency.setValueAtTime(659.25, audioCtx.currentTime + 0.08);
+            osc.frequency.setValueAtTime(783.99, audioCtx.currentTime + 0.16);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.25);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.25);
+        } else if (type === 'wrong') {
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(180, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(90, audioCtx.currentTime + 0.2);
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+        }
+    }
+
+    // 遊戲核心變數
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    let currentQ = 0;
+    let score = 0;
+    let hp = 100;
+    let playerName = "";
+    let playerAnswers = [];
+    let gameActive = false;
+
+    let mouse = { x: 400, y: 300 };
+    let cannon = { x: 400, y: 550, radius: 30, angle: 0 };
+    let bullets = [];
+    let targets = [];
+    let particles = [];
+
+    // 初始化讀取排行榜
+    window.addEventListener('DOMContentLoaded', () => {
+        fetchLeaderboard();
+    });
+
+    // 從 Google Sheets 讀取排行榜
+    function fetchLeaderboard() {
+        const startBody = document.getElementById('leaderboard-body-start');
+        const endBody = document.getElementById('leaderboard-body-end');
+
+        if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("你的網址")) {
+            const errorMsg = '<tr><td colspan="4" style="color:#ffbe76;">⚠️ 未配置 Google Apps Script 網址</td></tr>';
+            startBody.innerHTML = errorMsg;
+            endBody.innerHTML = errorMsg;
+            return;
+        }
+
+        fetch(GOOGLE_SCRIPT_URL)
+            .then(res => res.json())
+            .then(data => {
+                if (!Array.isArray(data) || data.length === 0) {
+                    const emptyMsg = '<tr><td colspan="4" style="color:#aaa;">尚無榜單紀錄，快來搶頭香！</td></tr>';
+                    startBody.innerHTML = emptyMsg;
+                    endBody.innerHTML = emptyMsg;
+                    return;
+                }
+
+                let html = "";
+                const medalIcons = ["👑 1", "🥈 2", "🥉 3", "4", "5"];
+                const rankClasses = ["rank-1", "rank-2", "rank-3", "", ""];
+
+                data.forEach((item, index) => {
+                    const rankStr = medalIcons[index] || (index + 1);
+                    const rankClass = rankClasses[index] || "";
+                    html += `
+                        <tr class="${rankClass}">
+                            <td>${rankStr}</td>
+                            <td>${escapeHtml(item.name)}</td>
+                            <td>${item.score} 分</td>
+                            <td>${item.hp} HP</td>
+                        </tr>
+                    `;
+                });
+
+                startBody.innerHTML = html;
+                endBody.innerHTML = html;
+            })
+            .catch(err => {
+                const failMsg = '<tr><td colspan="4" style="color:#ff4757;">❌ 無法載入排行榜，請稍後再試</td></tr>';
+                startBody.innerHTML = failMsg;
+                endBody.innerHTML = failMsg;
+            });
+    }
+
+    function escapeHtml(text) {
+        return String(text).replace(/[&<>"']/g, function(m) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m];
+        });
+    }
+
+    class Bullet {
+        constructor(x, y, angle) {
+            this.x = x; this.y = y; this.speed = 12;
+            this.vx = Math.cos(angle) * this.speed;
+            this.vy = Math.sin(angle) * this.speed;
+            this.radius = 6;
+        }
+        update() { this.x += this.vx; this.y += this.vy; }
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffd700'; ctx.fill(); ctx.closePath();
+        }
+    }
+
+    class Target {
+        constructor(x, y, text, isCorrect) {
+            this.x = x; this.y = y; this.text = text; this.isCorrect = isCorrect;
+            this.radius = 42;
+            this.vx = (Math.random() - 0.5) * 2;
+            this.baseY = y;
+            this.floatAngle = Math.random() * Math.PI * 2;
+        }
+        update() {
+            this.x += this.vx;
+            if (this.x - this.radius < 20 || this.x + this.radius > 780) this.vx *= -1;
+            this.floatAngle += 0.03;
+            this.y = this.baseY + Math.sin(this.floatAngle) * 12;
+        }
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#c0392b'; ctx.fill();
+            ctx.lineWidth = 4; ctx.strokeStyle = '#f1c40f'; ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius * 0.65, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffffff'; ctx.fill();
+
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 18px Arial';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(this.text, this.x, this.y);
+        }
+    }
+
+    class Particle {
+        constructor(x, y, color) {
+            this.x = x; this.y = y; this.color = color;
+            this.vx = (Math.random() - 0.5) * 8;
+            this.vy = (Math.random() - 0.5) * 8;
+            this.alpha = 1; this.radius = Math.random() * 4 + 2;
+        }
+        update() { this.x += this.vx; this.y += this.vy; this.alpha -= 0.03; }
+        draw() {
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, this.alpha);
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = this.color; ctx.fill(); ctx.restore();
+        }
+    }
+
+    function updatePointer(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        mouse.x = (clientX - rect.left) * scaleX;
+        mouse.y = (clientY - rect.top) * scaleY;
+    }
+
+    canvas.addEventListener('mousemove', (e) => updatePointer(e.clientX, e.clientY));
+    canvas.addEventListener('click', () => {
+        if (!gameActive) return;
+        bullets.push(new Bullet(cannon.x, cannon.y, cannon.angle));
+        playSound('shoot');
+    });
+
+    canvas.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (e.touches.length > 0) {
+            updatePointer(e.touches[0].clientX, e.touches[0].clientY);
+            if (gameActive) {
+                bullets.push(new Bullet(cannon.x, cannon.y, cannon.angle));
+                playSound('shoot');
+            }
+        }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        if (e.touches.length > 0) updatePointer(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: false });
+
+    function startGame() {
+        const input = document.getElementById('player-name').value.trim();
+        if (!input) {
+            alert('請輸入勇者姓名或座號！');
+            return;
+        }
+        playerName = input;
+        document.getElementById('display-name').innerText = playerName;
+        document.getElementById('start-screen').classList.remove('active');
+        document.getElementById('hud').style.display = 'flex';
+        document.getElementById('question-banner').style.display = 'block';
+
+        gameActive = true;
+        loadQuestion();
+        requestAnimationFrame(gameLoop);
+    }
+
+    function loadQuestion() {
+        if (currentQ >= questions.length || hp <= 0) {
+            endGame();
+            return;
+        }
+
+        const qData = questions[currentQ];
+        document.getElementById('question-banner').innerText = qData.q;
+
+        targets = [];
+        let opts = [...qData.options].sort(() => Math.random() - 0.5);
+        let startX = 130;
+        let gap = 180;
+
+        opts.forEach((optText, index) => {
+            let isCorrect = (optText === qData.ans);
+            targets.push(new Target(startX + index * gap, 180 + (index % 2 * 40), optText, isCorrect));
+        });
+    }
+
+    function createExplosion(x, y, color) {
+        for (let i = 0; i < 20; i++) particles.push(new Particle(x, y, color));
+    }
+
+    function checkCollisions() {
+        for (let bIndex = bullets.length - 1; bIndex >= 0; bIndex--) {
+            let b = bullets[bIndex];
+            if (!b) continue;
+
+            if (b.x < 0 || b.x > 800 || b.y < 0 || b.y > 600) {
+                bullets.splice(bIndex, 1);
+                continue;
+            }
+
+            for (let tIndex = targets.length - 1; tIndex >= 0; tIndex--) {
+                let t = targets[tIndex];
+                let dist = Math.hypot(b.x - t.x, b.y - t.y);
+
+                if (dist < b.radius + t.radius) {
+                    if (t.isCorrect) {
+                        createExplosion(t.x, t.y, '#2ed573');
+                        playSound('correct');
+                        score += 12.5;
+                        playerAnswers.push({ q: currentQ + 1, isCorrect: true, ans: t.text });
+                        document.getElementById('score-val').innerText = score;
+                        
+                        bullets = [];
+                        targets = [];
+                        currentQ++;
+                        setTimeout(loadQuestion, 400);
+                        return;
+                    } else {
+                        createExplosion(t.x, t.y, '#ff4757');
+                        playSound('wrong');
+                        hp -= 15;
+                        if (hp < 0) hp = 0;
+                        document.getElementById('hp-val').innerText = hp;
+                        playerAnswers.push({ q: currentQ + 1, isCorrect: false, ans: t.text });
+                        
+                        targets.splice(tIndex, 1);
+                        bullets.splice(bIndex, 1);
+
+                        if (hp <= 0) endGame();
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    function gameLoop() {
+        if (!gameActive) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        cannon.angle = Math.atan2(mouse.y - cannon.y, mouse.x - cannon.x);
+
+        ctx.beginPath();
+        ctx.moveTo(cannon.x, cannon.y);
+        ctx.lineTo(mouse.x, mouse.y);
+        ctx.strokeStyle = 'rgba(255, 215, 0, 0.3)';
+        ctx.setLineDash([6, 6]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.save();
+        ctx.translate(cannon.x, cannon.y);
+        ctx.rotate(cannon.angle);
+        ctx.fillStyle = '#27ae60';
+        ctx.fillRect(0, -10, 45, 20);
+        ctx.beginPath();
+        ctx.arc(0, 0, cannon.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#2ea043';
+        ctx.fill();
+        ctx.restore();
+
+        bullets.forEach(b => { b.update(); b.draw(); });
+        targets.forEach(t => { t.update(); t.draw(); });
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            particles[i].update();
+            particles[i].draw();
+            if (particles[i].alpha <= 0) particles.splice(i, 1);
+        }
+
+        checkCollisions();
+        requestAnimationFrame(gameLoop);
+    }
+
+    function endGame() {
+        gameActive = false;
+        document.getElementById('hud').style.display = 'none';
+        document.getElementById('question-banner').style.display = 'none';
+        document.getElementById('result-screen').classList.add('active');
+
+        document.getElementById('res-name').innerText = playerName;
+        document.getElementById('res-score').innerText = score;
+        document.getElementById('res-hp').innerText = hp;
+
+        const titleObj = document.getElementById('res-title');
+        if (score === 100) titleObj.innerText = "👑 稱號：森林傳奇神射手";
+        else if (score >= 75) titleObj.innerText = "🏹 稱號：疾風神射手";
+        else if (score >= 50) titleObj.innerText = "🗡️ 稱號：森林巡邏兵";
+        else titleObj.innerText = "⛺ 稱號：勇者訓練營新兵";
+
+        uploadToGoogleSheets();
+    }
+
+    function uploadToGoogleSheets() {
+        const statusObj = document.getElementById('upload-status');
+
+        if (!GOOGLE_SCRIPT_URL || GOOGLE_SCRIPT_URL.includes("你的網址")) {
+            statusObj.innerText = "⚠️ 未配置 Google Apps Script 網址，數據未同步。";
+            statusObj.style.color = "#ffbe76";
+            return;
+        }
+
+        statusObj.innerText = "⏳ 戰報同步中...";
+
+        let details = playerAnswers.map(a => `任務${a.q}:${a.isCorrect ? '✅' : '❌'}`).join(', ');
+
+        const payload = {
+            name: playerName,
+            score: score,
+            hp: hp,
+            details: details
+        };
+
+        fetch(GOOGLE_SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(() => {
+            statusObj.innerText = "✅ 戰報已同步！正在刷新排行榜...";
+            statusObj.style.color = "#2ed573";
+            setTimeout(fetchLeaderboard, 1000);
+        })
+        .catch(err => {
+            statusObj.innerText = "❌ 數據上傳失敗，請檢查網路。";
+            statusObj.style.color = "#ff4757";
+        });
+    }
+</script>
+</body>
+</html>
